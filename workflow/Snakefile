@@ -24,11 +24,11 @@ rule all:
         "out/aa_unaln.fasta",
         "out/aa_aln.fasta",
         "out/aa_changes.tsv",
-        "out/aa_changes_corrected.fasta"
+        "out/aa_changes_corrected.tsv",
 
 rule blastn:
   input:
-    db="db/ply_alleles.fasta",
+    db=config["db"],
     nucl=lambda wildcards: config["fastas"] + wildcards.sample + ".fasta"
   output:
     blast="out/blast/{sample}.tsv"
@@ -59,7 +59,7 @@ rule summary_alleles:
 
 rule align_alleles_aa:
   input:
-    db="db/ply_alleles.fasta",
+    db=config["db"],
     alleles="out/alleles.fasta"
   output:
     unaln="out/aa_unaln.fasta",
@@ -80,11 +80,10 @@ rule compare_aa_changes:
     "python workflow/scripts/compare_aa_changes.py --aln {input} --ref {params.ply_ref} --output {output}"
 
 rule correct_aa_alleles:
-  input:
-    df="out/aa_changes.tsv"
-  output:"out/aa_changes_corrected.fasta"
+  input:"out/aa_changes.tsv"
+  output:"out/aa_changes_corrected.tsv"
   log: "out/logs/correct_alleles.log"
   conda: "envs/blast.yml"
   shell:
-    "python workflow/scripts/correct_alleles.py --aa-changes {input.df} --out {output}"
+    "python workflow/scripts/correct_alleles.py --aa-changes {input} --out {output}"
 

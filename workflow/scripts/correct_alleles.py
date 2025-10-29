@@ -1,88 +1,78 @@
-#!/usr/bin/env python
-
+#!/usr/bin/env python3
 def get_options():
     import argparse
-
-    description = "Correct ply allele numbers in FASTA headers based on amino acid mutation profiles"
+    description = "Correct ply allele based on amino acid mutation profiles"
     parser = argparse.ArgumentParser(description=description)
-
-    parser.add_argument("--aa-changes",
-                        required=True,
-                        help="TSV file containing amino acid changes (aa_changes.tsv)")
-    parser.add_argument("--out",
-                        required=True,
-                        help="Output")
-
+    parser.add_argument("--aa-changes", required=True, help="TSV file containing amino acid changes (aa_changes.tsv)")
+    parser.add_argument("--out", required=True, help="Output TSV file with corrected ply allele numbers")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
-  import os
-  import re
-  import pandas as pd
-  import numpy as np
+    import pandas as pd
+    import numpy as np
+    import re
 
-  options = get_options()
+    options = get_options()
 
-  # Load amino acid changes table
-  aa_changes = pd.read_csv(options.aa_changes, sep="\t")
+    # Load amino acid changes table
+    aa_changes = pd.read_csv(options.aa_changes, sep="\t")
 
-  # reorder columns based on
-  def extract_position(col):
-      match = re.search(r'pos_(\d+)', col)
-      return int(match.group(1)) if match else float('inf')
+    # --- Detect amino acid position columns ---
+    aa_cols = [c for c in aa_changes.columns if re.match(r"pos_\d+", c)]
+    if not aa_cols:
+        raise ValueError("No amino acid position columns detected (expected names like pos_1, pos_2, ...)")
 
-  # Keep 'sample_id' first, sort other columns by numeric position
-  cols = aa_changes.columns.tolist()
-  sorted_cols = ['sample_id'] + sorted([c for c in cols if c != 'sample_id'], key=extract_position)
+    # --- Separate reference and sample rows ---
+    ref_df = aa_changes[aa_changes["sample_id"].str.match(r"^ply-\d+$")].copy()
+    sample_df = aa_changes[~aa_changes["sample_id"].str.match(r"^ply-\d+$")].copy()
 
-  # Reorder DataFrame
-  aa_changes = aa_changes[sorted_cols]
-  aa_changes.head(2)
+    # --- Store reference patterns as tuples ---
+    ref_patterns = {}
+    print("\n📘 Reference Patterns:")
+    for _, ref_row in ref_df.iterrows():
+        ref_id = ref_row["sample_id"]
+        ref_pattern = tuple(ref_row[aa_cols].fillna("."))
+        ref_patterns[ref_id] = ref_pattern
+        pattern_str = " | ".join([f"{c}:{v}" for c, v in zip(aa_cols, ref_pattern)])
+        print(f"{ref_id}: {pattern_str}")
 
-  # extract sampleid and ply columns
-  # Extract sampleid (digits before _ply-) or full sample_id if format is different
-  aa_changes["sampleid"] = aa_changes["sample_id"].str.extract(r'^(\d+)_ply-\d+')
-  aa_changes["sampleid"] = aa_changes["sampleid"].fillna(aa_changes["sample_id"])  # fallback if no match
+    # --- Add a column for ply_allele_aa if not present ---
+    if "ply_allele_aa" not in aa_changes.columns:
+        aa_changes.insert(aa_changes.columns.get_loc("sample_id") + 1, "ply_allele_aa", "")
 
-  # Extract ply allele (e.g. ply-5)
-  aa_changes["ply_allele_nucl"] = aa_changes["sample_id"].str.extract(r'(ply-\d+)')
+    # --- Annotate each sample ---
+    print("\n🔬 Matching Samples to Reference Patterns:\n")
+    for idx, sample_row in sample_df.iterrows():
+        sample_id = sample_row["sample_id"]
+        sample_pattern = tuple(sample_row[aa_cols].fillna("."))
 
-  # Reorder columns: sample_id, sampleid, ply_allele, then the rest
-  first_cols = ["sample_id", "sampleid", "ply_allele_nucl"]
-  remaining_cols = [col for col in aa_changes.columns if col not in first_cols]
-  aa_changes = aa_changes[first_cols + remaining_cols]
+        # If all dots → no AA changes → ply-1
+        if all(v == "." for v in sample_pattern):
+            aa_changes.at[idx, "ply_allele_aa"] = "ply-1"
+            print(f"Sample: {sample_id}")
+            print("No AA changes → assigned ply-1\n")
+            continue
 
-  aa_changes.insert(aa_changes.columns.get_loc("ply_allele_nucl") + 1, "ply_allele_aa", "")
+        # Compare against stored reference patterns
+        matched_ref = None
+        for ref_id, ref_pattern in ref_patterns.items():
+            if sample_pattern == ref_pattern:
+                matched_ref = ref_id
+                break
 
-  # Identify amino acid mutation columns
-  aa_cols = aa_changes.columns[aa_changes.columns.get_loc("ply_allele_aa") + 1:]
+        # Print results
+        print(f"Sample: {sample_id}")
+        print("Sample pattern: ", " | ".join([f"{c}:{v}" for c, v in zip(aa_cols, sample_pattern)]))
+        if matched_ref:
+            print("Matched reference:", matched_ref)
+            print("Ref pattern:     ", " | ".join([f"{c}:{v}" for c, v in zip(aa_cols, ref_patterns[matched_ref])]))
+            aa_changes.at[idx, "ply_allele_aa"] = matched_ref
+        else:
+            print("No exact match found → left empty")
+            aa_changes.at[idx, "ply_allele_aa"] = ""
+        print()
 
-  # Extract reference rows (e.g., "ply-2", "ply-3", ...)
-  ref_df  = aa_changes[aa_changes["sample_id"].str.match(r"^ply-\d+$")].copy()
-
-  # Target only non-reference rows
-  sample_df = aa_changes[~aa_changes["sample_id"].str.match(r"^ply-\d+$")].copy()
-
-  for idx, sample_row in sample_df.iterrows():
-      sample_aa = sample_row[aa_cols]
-
-      # Loop through reference rows
-      matched = False
-      for _, ref_row in ref_df.iterrows():
-          ref_aa = ref_row[aa_cols]
-
-          # Only compare positions where the sample has non-NaN values
-          mask = sample_aa.notna()
-
-          # Enforce: all values must match exactly in those positions
-          if mask.any() and sample_aa[mask].equals(ref_aa[mask]):
-              # Set ply_allele_aa to the matching reference allele (ply_allele_nucl)
-              aa_changes.at[idx, "ply_allele_aa"] = ref_row["ply_allele_nucl"]
-              matched = True
-              break
-
-      if not matched:
-          aa_changes.at[idx, "ply_allele_aa"] = ""  # or np.nan
-  # save aa changes
-  aa_changes.to_csv(options.out, sep="\t", index=None)
+    # --- Save corrected output ---
+    aa_changes.to_csv(options.out, sep="\t", index=False)
+    print(f"\n✅ Annotated table saved to: {options.out}")

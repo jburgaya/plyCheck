@@ -2,7 +2,11 @@
 # list of samples without extension or path
 samples: "data/sampleids.txt"
 # path to fastas
-fastas: "data/fastas/"
+fastas: "/storage/homefs/jb25u082/Project_SpVIR/data/Project1000/fastas/"
+
+# plyDB
+db: "db/plyDB.fasta"
+
 
 # ----- outputs ----- #
 blastdir: "out/blast"
