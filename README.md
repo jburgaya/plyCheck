@@ -30,6 +30,8 @@ Then  run snakemake as:
 | ``aa_changes.tsv``    | Initial ply allele assignment    |
 | ``aa_changes_corrected.tsv``    | Corrected ply allele assignment    |
 
+To generate the file below:
+``python workflow/scripts/update_fasta_headers.py --input-fasta out/aa_aln.fasta --mapping-file out/aa_changes_corrected.tsv --output-fasta out/aa_aln_corrected.fasta``
 The ``aa_aln_corrected.fasta`` can be used with IQTREE to generate a phylogenetic tree as in:
 
 ``iqtree -s out/aa_aln_corrected.fasta -m MFP -bb 1000``
