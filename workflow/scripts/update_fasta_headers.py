@@ -12,23 +12,40 @@ def get_options():
     return parser.parse_args()
 
 def load_mapping(mapping_file):
+    """
+    Load the mapping file. Returns a dict mapping original prefix to ply number.
+    """
     mapping = {}
     with open(mapping_file) as f:
         for line in f:
             parts = line.strip().split("\t")
-            if len(parts) >= 4:
-                prefix = parts[1]  # the column that matches the prefix before ply
-                new_ply = parts[3]  # the new ply value
-                mapping[prefix] = new_ply
+            if len(parts) >= 2:
+                sample_col = parts[0]  # e.g., '680_ply-2'
+                ply_col = parts[1]     # e.g., 'ply-2'
+
+                # Extract numeric sample ID
+                if "_ply-" in sample_col:
+                    sample_id = sample_col.split("_ply-")[0]
+                else:
+                    sample_id = sample_col
+
+                # Extract ply number from ply_col
+                if "ply-" in ply_col:
+                    ply_number = ply_col.split("ply-")[1]
+                else:
+                    ply_number = ply_col
+
+                mapping[sample_id] = f"ply-{ply_number}"
     return mapping
 
 def update_fasta_headers(input_fasta, mapping, output_fasta):
     updated_records = []
     for record in SeqIO.parse(input_fasta, "fasta"):
-        if "_" in record.id and "ply-" in record.id.split("_")[1]:
-            prefix, ply_part = record.id.split("_", 1)
-            if prefix in mapping:
-                record.id = f"{prefix}_{mapping[prefix]}"
+        # Extract sample ID from FASTA header (assuming header is like '680_ply-2')
+        if "_" in record.id and "ply-" in record.id:
+            sample_id = record.id.split("_ply-")[0]
+            if sample_id in mapping:
+                record.id = f"{sample_id}_{mapping[sample_id]}"
                 record.description = ""
         updated_records.append(record)
     SeqIO.write(updated_records, output_fasta, "fasta")
