@@ -8,7 +8,7 @@ Annotate ply alleles
 
 Currently known alleles are [20](https://doi.org/10.1371/journal.pone.0134055), but the sequences for ply-14 and ply-20 are not available yet in the db.
 
-`plyDB.fasta`: updated DB
+`db/plyDB.fasta`: updated DB with new alleles
 
 # Usage
 
